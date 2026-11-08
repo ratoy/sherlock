@@ -1,0 +1,58 @@
+name: Sherlock Username Lookup
+
+on:
+  workflow_dispatch:
+    inputs:
+      username:
+        description: "要查询的用户名，多个用空格分隔"
+        required: true
+        type: string
+      timeout:
+        description: "单站点超时秒数"
+        required: false
+        default: "30"
+        type: string
+      print_all:
+        description: "同时输出未命中的站点"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  lookup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install sherlock
+        run: pip install .
+
+      - name: Run sherlock
+        env:
+          USERS: ${{ inputs.username }}
+          TMO: ${{ inputs.timeout }}
+          ALL: ${{ inputs.print_all }}
+        run: |
+          set -euo pipefail
+          read -r -a NAMES <<< "$USERS"
+          EXTRA=""
+          if [ "$ALL" = "true" ]; then EXTRA="--print-all"; fi
+          sherlock "${NAMES[@]}" --csv --folderoutput results --timeout "$TMO" --no-color $EXTRA
+          echo "--- results ---"
+          ls -l results || true
+          for f in results/*.csv; do echo "===== $f ====="; grep -v ',,' "$f" || true; done
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sherlock-results
+          path: results/
+          retention-days: 30
